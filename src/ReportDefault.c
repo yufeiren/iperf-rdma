@@ -159,7 +159,7 @@ void reporter_reportsettings( ReporterData *data ) {
                   (data->mThreadMode == kMode_Listener ? 0 : 1) );
     win_requested = data->mTCPWin;
 
-    printf( seperator_line );
+    printf( separator_line );
     if ( data->mThreadMode == kMode_Listener ) {
         printf( server_port,
                 (isUDP( data ) ? "UDP" : "TCP"), 
@@ -198,7 +198,7 @@ void reporter_reportsettings( ReporterData *data ) {
         printf( warn_window_requested, buffer );
     }
     printf( "\n" );
-    printf( seperator_line );
+    printf( separator_line );
 }
 
 /*

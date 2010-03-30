@@ -1,3 +1,8 @@
+2010-03-31 Gerrit Renker <grenker@users.sourceforge.net>
+
+* "neater" output for some units, eg Kbps, Mbps, Gbps
+* addresses some typos
+
 2008-05-09 Gerrit Renker <grenker@users.sourceforge.net>
 
 * replace costly gettimeofday() with nanonsleep() See:
