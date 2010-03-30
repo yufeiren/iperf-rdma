@@ -96,6 +96,7 @@ extern "C" {
     // records being accessed in a report and also to
     // serialize modification of the report list
     Condition ReportCond;
+    Condition ReportDoneCond;
 }
 
 // global variables only accessed within this file
@@ -142,6 +143,7 @@ int main( int argc, char **argv ) {
 
     // Initialize global mutexes and conditions
     Condition_Initialize ( &ReportCond );
+    Condition_Initialize ( &ReportDoneCond );
     Mutex_Initialize( &groupCond );
     Mutex_Initialize( &clients_mutex );
 

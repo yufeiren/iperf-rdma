@@ -1,5 +1,10 @@
 2010-03-31 Gerrit Renker <grenker@users.sourceforge.net>
 
+* Gerrit Renker's version of Ingo's Molnar's patch to further reduce CPU usage
+* tracker issue 2006708
+
+2010-03-31 Gerrit Renker <grenker@users.sourceforge.net>
+
 * "neater" output for some units, eg Kbps, Mbps, Gbps
 * addresses some typos
 
