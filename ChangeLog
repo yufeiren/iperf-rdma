@@ -1,3 +1,8 @@
+2010-04-01 Deny IP Any Any <denyipanyany@gmail.com>
+
+* Exit rather than warn on connection failure
+* http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=518033
+
 2010-03-31 Gerrit Renker <grenker@users.sourceforge.net>
 
 * Gerrit Renker's version of Ingo's Molnar's patch to further reduce CPU usage
