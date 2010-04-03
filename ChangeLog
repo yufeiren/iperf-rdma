@@ -1,3 +1,8 @@
+2010-04-02 Ralf Lübben
+
+* honor -i flag when for a server (-s) when using TCP
+* tracker issue 2836973
+
 2010-04-01 Deny IP Any Any <denyipanyany@gmail.com>
 
 * Exit rather than warn on connection failure
