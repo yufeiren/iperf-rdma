@@ -1,3 +1,7 @@
+2010-07-08 Richard Hartmann <richih.mailinglist@gmail.com>
+
+* update man page to include info on option to set TOS/DSCP bits (-S)
+
 2010-07-08 Jon Dugan <jdugan@x1024.net>
 
 * bumped default TCP send/recv buffer to 128K (this is not the kernel buffer
