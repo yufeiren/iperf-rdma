@@ -5,7 +5,7 @@ dnl ===================================================================
 
 
 AC_PREREQ(2.59)
-AC_INIT(Iperf,2.0.5)
+AC_INIT(iperf-rdma,1.0)
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE()
 
@@ -67,9 +67,25 @@ dnl check for -lnsl, -lsocket
 AC_CHECK_FUNC(gethostbyname,,AC_CHECK_LIB(nsl, gethostbyname))
 AC_CHECK_FUNC(socket,,AC_CHECK_LIB(socket, socket))
 
+dnl check for RDMA capability: -lrdmacm, -libverbs
+AC_CHECK_LIB(rdmacm, rdma_bind_addr, [], [
+	echo "librdmacm can not be found."
+	exit -1
+	])
+AC_CHECK_LIB(ibverbs, ibv_alloc_pd, [], [
+	echo "libibverbs can not be found."
+	exit -1
+	])
+
 dnl Checks for header files.
 AC_HEADER_STDC
 AC_CHECK_HEADERS([arpa/inet.h libintl.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h syslog.h unistd.h])
+
+dnl check for RDMA header files.
+AC_CHECK_HEADERS([rdma/rdma_cma.h infiniband/arch.h], [], [
+	echo "RDMA header files can not be found."
+	exit -1
+	])
 
 dnl ===================================================================
 dnl Checks for typedefs, structures
