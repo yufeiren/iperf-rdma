@@ -1,3 +1,9 @@
+This is iperf-rdma, an RDMA network benchmark extended from iperf.
+
+
+
+Original README:
+
 This is Iperf v2.0.0, a tool for measuring Internet bandwidth performance.
 See the doc directory for more documentation.
 Briefly:
