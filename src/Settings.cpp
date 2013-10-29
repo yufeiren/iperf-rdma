@@ -394,9 +394,9 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
             break;
 
         case 'e':
-            if( mExtSettings->mThreadMode != kMode_Client ) {
+            if( mExtSettings->mThreadMode == kMode_Client ) {
                 mExtSettings->mThreadMode = kMode_RDMA_Client;
-            } else if ( mExtSettings->mThreadMode != kMode_Listener ) {
+            } else if ( mExtSettings->mThreadMode == kMode_Listener ) {
                 mExtSettings->mThreadMode = kMode_RDMA_Listener;
             } else {
                 fprintf( stderr, warn_invalid_rdma_opt_placement, option );
@@ -448,7 +448,7 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
             break;
 
         case 'k': // 
-            if ( mExtSettings->mThreadMode != kMode_Client ) {
+            if ( mExtSettings->mThreadMode != kMode_RDMA_Client ) {
                fprintf( stderr, warn_invalid_server_option, option );
 	       break;
 	    }
@@ -485,7 +485,8 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
 
         case 'q': // rdma io depth
             mExtSettings->rdma_iodepth = atoi( optarg );
-	    fprintf( stderr, warn_invalid_rdma_iodepth, IPERF_RDMA_MAX_IO_DEPTH);
+	    if ( mExtSettings->rdma_iodepth > IPERF_RDMA_MAX_IO_DEPTH )
+                fprintf( stderr, warn_invalid_rdma_iodepth, IPERF_RDMA_MAX_IO_DEPTH);
             break;
 
         case 'r': // test mode tradeoff

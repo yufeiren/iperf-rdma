@@ -90,7 +90,8 @@ int iperf_setup_qp(rdma_Ctrl_Blk *cb)
     if (cb->cq_channel == NULL)
 	    goto err1;
 
-    cb->cq = ibv_create_cq(cm_id->verbs, cb->rdma_iodepth * 2, cb,
+    // rdma_iodepth on server side is 0 at this time
+    cb->cq = ibv_create_cq(cm_id->verbs, IPERF_RDMA_MAX_IO_DEPTH * 2, cb,
 			   cb->cq_channel, 0);
     WARN( cb->cq == NULL, "ibv_create_cq" );
     if (cb->cq == NULL)
@@ -113,6 +114,7 @@ int iperf_setup_qp(rdma_Ctrl_Blk *cb)
 
     rc = rdma_create_qp(cb->cm_id, cb->pd, &init_attr);
     WARN( rc == RDMAIBV_ERROR, "rdma_create_qp" );
+    cb->qp = cb->cm_id->qp; // look wierd and ugly to combine rdmacm and ibverbs together
 
     return rc;
 
@@ -143,7 +145,7 @@ int iperf_setup_control_msg(rdma_Ctrl_Blk *cb)
 
     cb->send_mr = ibv_reg_mr(cb->pd, &cb->send_buf, sizeof(cb->send_buf),
 			     0);
-    WARN( (cb->send_mr == NULL) && ibv_dereg_mr(cb->recv_mr), "ibv_reg_mr" );
+    WARN( (cb->send_mr == NULL), "ibv_reg_mr" );
 
     /* setup work request */
     /* recv wq */
@@ -198,7 +200,10 @@ void iperf_setup_local_buf(rdma_Ctrl_Blk *cb)
             WARN( 1, "Unknown rdma opcode" );
             break;
 	}
-	WARN( io_u->mr == NULL, "ibv_reg_mr" );
+        WARN( io_u->mr == NULL, "ibv_reg_mr" );
+        io_u->rdma_sgl.addr = (uint64_t) (unsigned long) io_u->addr;
+        io_u->rdma_sgl.lkey = io_u->mr->lkey;
+        io_u->rdma_sgl.length = io_u->size;
     }
 }
 
@@ -273,18 +278,23 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb)
         io_u = &cb->io_us[i];
 	switch (cb->rdma_opcode) {
 	case kRDMAOpc_RDMA_Write:
+            io_u->sq_wr.wr_id = io_u->wr_id;
             io_u->sq_wr.opcode = IBV_WR_RDMA_WRITE;
             io_u->sq_wr.wr.rdma.remote_addr = ntohll(rmt_u->buf);
             io_u->sq_wr.wr.rdma.rkey = ntohl(rmt_u->rkey);
+            io_u->sq_wr.sg_list = &io_u->rdma_sgl;
             io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
 	    break;
 	case kRDMAOpc_RDMA_Read:
+            io_u->sq_wr.wr_id = io_u->wr_id;
             io_u->sq_wr.opcode = IBV_WR_RDMA_READ;
             io_u->sq_wr.wr.rdma.remote_addr = ntohll(rmt_u->buf);
             io_u->sq_wr.wr.rdma.rkey = ntohl(rmt_u->rkey);
+            io_u->sq_wr.sg_list = &io_u->rdma_sgl;
             io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
 	    break;
 	case kRDMAOpc_Send_Recv:
+            io_u->sq_wr.wr_id = io_u->wr_id;
             io_u->sq_wr.opcode = IBV_WR_SEND;
             io_u->sq_wr.send_flags = IBV_SEND_SIGNALED;
 	    break;

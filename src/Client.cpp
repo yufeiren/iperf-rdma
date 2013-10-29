@@ -262,6 +262,10 @@ void Client::RunRDMA( void ) {
 	}
     }
 
+    for (i = 0; i < cb->rdma_iodepth; i++) {
+        io_completed_list.push_back(&cb->io_us[i]);
+    }
+
     // asynchronous I/O performing
 
     do {

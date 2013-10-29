@@ -73,12 +73,6 @@ Server::Server( thread_Settings *inSettings ) {
     // initialize buffer
     mBuf = new char[ mSettings->mBufLen ];
     FAIL_errno( mBuf == NULL, "No memory for buffer\n", mSettings );
-    
-    if ( inSettings->mThreadMode == kMode_RDMA_Server ){
-        mSettings->mCtrlBlk = new rdma_Ctrl_Blk;
-        Settings_Initialize_RDMA( mSettings );
-    }
-	
 }
 
 /* -------------------------------------------------------------------
@@ -198,12 +192,6 @@ void Server::RunRDMA( void ) {
 
     reportstruct = new ReportStruct;
 
-    rc = iperf_setup_qp(cb);
-    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_qp", mSettings );
-
-    rc = iperf_setup_control_msg(cb);
-    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_control_msg", mSettings );
-
     // get test request
     rc = ibv_post_recv(cb->qp, &cb->rq_wr, &bad_recv_wr);
     WARN_errno( rc != 0, "ibv_post_recv" );
@@ -274,7 +262,7 @@ void Server::RunRDMA( void ) {
         
         do {
                 // deal with send/recv
-		WARN( 1, "nice START testing~~~" );
+		WARN( 1, "Nice, START testing~~~" );
 		sleep(100);
 
             if ( isUDP( mSettings ) ) {

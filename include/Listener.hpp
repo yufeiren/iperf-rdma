@@ -88,7 +88,7 @@ public:
 
     void Accept( thread_Settings *server );
 
-    RDMAConnState PollRDMA( thread_Settings *server );
+    void AcceptRDMA( thread_Settings *server );
 
     void UDPSingleServer ();
 
@@ -98,9 +98,6 @@ protected:
     thread_Settings *mSettings;
     thread_Settings *server;
 
-	//private:
-	//    std::list<struct rdma_cm_id *> acceptingList;
-	//    std::list<struct rdma_cm_id *> connList;
 }; // end class Listener
 
 #endif // LISTENER_H

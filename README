@@ -2,12 +2,12 @@ This is iperf-rdma TCP/UDP and RDMA network benchmark.  It derived
 from iperf with RDMA extentions.
 
 start server by enabling RDMA mode:
-  iperf -s -e [-q iodepth]
-  iperf --server --rdma --rdma_iodepth=[iodepth]
+  iperf-rdma -s -e [-q iodepth]
+  iperf-rdma --server --rdma --rdma_iodepth=[iodepth]
 
 start client 
-  iperf -c -e [-q iodepth] [-k opcode]
-  iperf --client --rdma --rdma_iodepth=[iodepth] --rdma_opcode=[read/write/send]
+  iperf-rdma -c [ipaddr] -e [-q iodepth] [-k opcode]
+  iperf-rdma --client --rdma --rdma_iodepth=[iodepth] --rdma_opcode=[read/write/send]
 
 
 using private_data to exchange test mode

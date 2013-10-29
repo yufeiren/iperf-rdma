@@ -303,61 +303,36 @@ void Listener::Run( void ) {
     }
 } // end Run 
 
-RDMAConnState Listener::PollRDMA( thread_Settings *server ) {
-
+void Listener::AcceptRDMA( thread_Settings *server ) {
     int rc;
-    struct rdma_conn_param conn_param;
-    RDMAConnState rs = CONN_STATE_UNKNOWN;
-    struct rdma_cm_event *event;
     rdma_Ctrl_Blk *cb = server->mCtrlBlk;
-    FAIL( cb == NULL, "rdma_Ctrl_Blk is NULL", mSettings );
+    struct rdma_conn_param conn_param;
 
-    rc = rdma_get_cm_event(cb->cm_channel, &event);
-    WARN( rc == RDMACM_ERROR, "rdma_get_cm_event" );
+    rc = iperf_setup_qp(cb);
+    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_qp", mSettings );
 
-    switch (event->event) {
-    case RDMA_CM_EVENT_CONNECT_REQUEST:
-        // the event->id is newly generated
-        // accept this connection request 
-        // and put it into accepting list
-        memset(&conn_param, 0, sizeof conn_param);
-        conn_param.responder_resources = 1;
-        conn_param.initiator_depth = 1;
+    rc = iperf_setup_control_msg(cb);
+    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_control_msg", mSettings );
 
-        rc = rdma_accept(event->id, &conn_param);
-        WARN( rc == RDMACM_ERROR, "rdma_accept" );
-	//        acceptingList.push_back(event->id);
-        rs = CONNECT_REQUEST;
-        break;
-    case RDMA_CM_EVENT_ESTABLISHED:
-        // the event->id is newly generated
-	    //        acceptingList.remove(event->id);
-	    //        connList.push_back(event->id);
-        server->mCtrlBlk->cm_id = event->id;
-        rs = CONNECTED;
-        break;
-    case RDMA_CM_EVENT_DISCONNECTED:
-        WARN( 1, "Disconnect event");
-        rs = DISCONNECTED;
-        break;
-    default:
-        WARN( 1, "Unexpected event");
-	rs = CONN_STATE_UNKNOWN;
-	break;
-    }
+    memset(&conn_param, 0, sizeof(conn_param));
+    conn_param.responder_resources = 1;
+    conn_param.initiator_depth = 1;
 
-    rc = rdma_ack_cm_event(event);
-    WARN( rc == RDMACM_ERROR, "rdma_ack_cm_event" );
-    return rs;
+    rc = rdma_accept(cb->cm_id, &conn_param);
+    WARN( rc == RDMACM_ERROR, "rdma_accept" );
 }
 
 
 void Listener::RunRDMA( void ) {
 
-    bool client = false, UDP = isUDP( mSettings ), mCount = (mSettings->mThreads != 0);
+    bool client = false, mCount = (mSettings->mThreads != 0);
     Iperf_ListEntry *exist, *listtemp;
 
+    int rc;
     RDMAConnState rs = CONN_STATE_UNKNOWN;
+    struct rdma_cm_event *event;
+    rdma_Ctrl_Blk *cb = mSettings->mCtrlBlk;
+    FAIL( cb == NULL, "rdma_Ctrl_Blk is NULL", mSettings );
 
     if ( mSettings->mHost != NULL ) {
         client = true;
@@ -372,19 +347,43 @@ void Listener::RunRDMA( void ) {
     // Listener is responsible for Connect Request detecting,
     // accept request (establishment), and disconnecting detecting.
     do {
-        rs = PollRDMA( server );
-	WARN( rs == CONN_STATE_UNKNOWN, "Connection is in unknown status" );
 
-        if (rs != CONNECTED)
-            continue;
+        do {
+            rc = rdma_get_cm_event(cb->cm_channel, &event);
+            WARN( rc == RDMACM_ERROR, "rdma_get_cm_event" );
 
-        Settings_Copy( mSettings, &server );
-        Settings_Copy_RDMA( mSettings, &server );
+            switch (event->event) {
+            case RDMA_CM_EVENT_CONNECT_REQUEST:
+                // create a new server
+                Settings_Copy( mSettings, &server );
+                Settings_Copy_RDMA( mSettings, &server );
 
-        server->mThreadMode = kMode_RDMA_Server;
+		server->mCtrlBlk->cm_id = event->id;
+                server->mCtrlBlk->cm_id->context = server; // setup context
+                server->mThreadMode = kMode_RDMA_Server;
 
-	server->mCtrlBlk->cm_id->context = server;
+		AcceptRDMA( server );
+		rs = CONNECT_REQUEST;
+                break;
+            case RDMA_CM_EVENT_ESTABLISHED:
+                server = (thread_Settings *) event->id->context;
+		rs = CONNECTED;
+                break;
+            case RDMA_CM_EVENT_DISCONNECTED:
+                WARN( 1, "Disconnect event");
+		rs = DISCONNECTED;
+                break;
+            default:
+                WARN( 1, "Unexpected event");
+                break;
+            }
 
+            rc = rdma_ack_cm_event(event);
+            WARN( rc == RDMACM_ERROR, "rdma_ack_cm_event" );
+
+        } while (rs != CONNECTED);
+
+	// get connection after extablished
 	memcpy(&server->local, \
 		rdma_get_local_addr(server->mCtrlBlk->cm_id), \
 		sizeof(iperf_sockaddr)) ;
