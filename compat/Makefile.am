@@ -18,4 +18,6 @@ libcompat_a_SOURCES = \
 		      inet_pton.c \
 		      signal.c \
 		      snprintf.c \
-		      string.c
+		      string.c \
+		      rdma.c
+

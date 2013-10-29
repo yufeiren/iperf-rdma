@@ -87,14 +87,17 @@ const struct option long_options[] =
 {"bandwidth",  required_argument, NULL, 'b'},
 {"client",     required_argument, NULL, 'c'},
 {"dualtest",         no_argument, NULL, 'd'},
+{"rdma",             no_argument, NULL, 'e'},
 {"format",     required_argument, NULL, 'f'},
 {"help",             no_argument, NULL, 'h'},
 {"interval",   required_argument, NULL, 'i'},
 {"len",        required_argument, NULL, 'l'},
+{"rdma_opcode", required_argument, NULL, 'k'},
 {"print_mss",        no_argument, NULL, 'm'},
 {"num",        required_argument, NULL, 'n'},
 {"output",     required_argument, NULL, 'o'},
 {"port",       required_argument, NULL, 'p'},
+{"rdma_iodepth", required_argument, NULL, 'q'},
 {"tradeoff",         no_argument, NULL, 'r'},
 {"server",           no_argument, NULL, 's'},
 {"time",       required_argument, NULL, 't'},
@@ -113,6 +116,7 @@ const struct option long_options[] =
 {"mss",        required_argument, NULL, 'M'},
 {"nodelay",          no_argument, NULL, 'N'},
 {"listenport", required_argument, NULL, 'L'},
+{"file_output", required_argument, NULL, 'O'},
 {"parallel",   required_argument, NULL, 'P'},
 {"remove",           no_argument, NULL, 'R'},
 {"tos",        required_argument, NULL, 'S'},
@@ -157,6 +161,7 @@ const struct option env_options[] =
 {"IPERF_MSS",        required_argument, NULL, 'M'},
 {"IPERF_NODELAY",          no_argument, NULL, 'N'},
 {"IPERF_LISTENPORT", required_argument, NULL, 'L'},
+{"IPERF_FILE_OUTPUT", required_argument, NULL, 'O'},
 {"IPERF_PARALLEL",   required_argument, NULL, 'P'},
 {"IPERF_TOS",        required_argument, NULL, 'S'},
 {"IPERF_TTL",        required_argument, NULL, 'T'},
@@ -169,7 +174,7 @@ const struct option env_options[] =
 
 #define SHORT_OPTIONS()
 
-const char short_options[] = "1b:c:df:hi:l:mn:o:p:rst:uvw:x:y:B:CDF:IL:M:NP:RS:T:UVWZ:";
+const char short_options[] = "1b:c:def:hi:l:k:mn:o:p:q:rst:uvw:x:y:B:CDF:G:HIL:M:NO:P:RS:T:UVWZ:";
 
 /* -------------------------------------------------------------------
  * defaults
@@ -234,6 +239,18 @@ void Settings_Initialize( thread_Settings *main ) {
 
 } // end Settings
 
+void Settings_Initialize_RDMA( thread_Settings* main )
+{
+    rdma_Ctrl_Blk *main_cb = main->mCtrlBlk;
+    memset(main_cb, 0, sizeof(*main_cb));
+    main_cb->rdma_opcode = main->rdma_opcode;
+    main_cb->rdma_iodepth = main->rdma_iodepth;
+    main_cb->buflen = main->mBufLen;
+    main_cb->sin.ss_family = PF_INET;
+    main_cb->port = htons(13924);
+    main_cb->outputfile = NULL;
+}
+
 void Settings_Copy( thread_Settings *from, thread_Settings **into ) {
     *into = new thread_Settings;
     memcpy( *into, from, sizeof(thread_Settings) );
@@ -257,6 +274,12 @@ void Settings_Copy( thread_Settings *from, thread_Settings **into ) {
     (*into)->mTID = thread_zeroid();
     (*into)->runNext = NULL;
     (*into)->runNow = NULL;
+}
+
+void Settings_Copy_RDMA( thread_Settings* from, thread_Settings** into )
+{
+    (*into)->mCtrlBlk = new rdma_Ctrl_Blk;
+    memcpy( (*into)->mCtrlBlk, from->mCtrlBlk, sizeof(rdma_Ctrl_Blk) );
 }
 
 /* -------------------------------------------------------------------
@@ -370,6 +393,17 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
 #endif
             break;
 
+        case 'e':
+            if( mExtSettings->mThreadMode != kMode_Client ) {
+                mExtSettings->mThreadMode = kMode_RDMA_Client;
+            } else if ( mExtSettings->mThreadMode != kMode_Listener ) {
+                mExtSettings->mThreadMode = kMode_RDMA_Listener;
+            } else {
+                fprintf( stderr, warn_invalid_rdma_opt_placement, option );
+	    }
+
+            break;
+
         case 'f': // format to print in
             mExtSettings->mFormat = (*optarg);
             break;
@@ -413,6 +447,21 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
 
             break;
 
+        case 'k': // 
+            if ( mExtSettings->mThreadMode != kMode_Client ) {
+               fprintf( stderr, warn_invalid_server_option, option );
+	       break;
+	    }
+	    if ( strcmp(optarg, "write") == 0 )
+	    	mExtSettings->rdma_opcode = kRDMAOpc_RDMA_Write;
+	    else if ( strcmp(optarg, "read") == 0 )
+	    	mExtSettings->rdma_opcode = kRDMAOpc_RDMA_Read;
+	    else if ( strcmp(optarg, "send") == 0 )
+	    	mExtSettings->rdma_opcode = kRDMAOpc_Send_Recv;
+	    else
+                fprintf( stderr, warn_invalid_rdma_opcode, optarg );
+            break;
+
         case 'm': // print TCP MSS
             setPrintMSS( mExtSettings );
             break;
@@ -434,6 +483,11 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
             mExtSettings->mPort = atoi( optarg );
             break;
 
+        case 'q': // rdma io depth
+            mExtSettings->rdma_iodepth = atoi( optarg );
+	    fprintf( stderr, warn_invalid_rdma_iodepth, IPERF_RDMA_MAX_IO_DEPTH);
+            break;
+
         case 'r': // test mode tradeoff
             if ( mExtSettings->mThreadMode != kMode_Client ) {
                 fprintf( stderr, warn_invalid_server_option, option );
@@ -447,7 +501,7 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
             break;
 
         case 's': // server mode
-            if ( mExtSettings->mThreadMode != kMode_Unknown ) {
+            if( mExtSettings->mThreadMode != kMode_Unknown ) {
                 fprintf( stderr, warn_invalid_client_option, option );
                 break;
             }
@@ -565,7 +619,9 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
             break;
 
         case 'F' : // Get the input for the data stream from a file
-            if ( mExtSettings->mThreadMode != kMode_Client ) {
+            if ( (mExtSettings->mThreadMode != kMode_Client) 
+	    	&& (mExtSettings->mThreadMode != kMode_RDMA_Client)
+		&& (mExtSettings->mThreadMode != kMode_RDMA_Listener) ) {
                 fprintf( stderr, warn_invalid_server_option, option );
                 break;
             }
@@ -573,6 +629,10 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
             setFileInput( mExtSettings );
             mExtSettings->mFileName = new char[strlen(optarg)+1];
             strcpy( mExtSettings->mFileName, optarg);
+            break;
+
+        case 'G' : // Get the rdma client transfer style
+
             break;
 
         case 'I' : // Set the stdin as the input source
@@ -606,6 +666,11 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
             setNoDelay( mExtSettings );
             break;
 
+	case 'O' : // Get the output for the data stream to a file
+            mExtSettings->mOutputDataFileName = new char[strlen(optarg)+1];
+            strcpy( mExtSettings->mOutputDataFileName, optarg);
+            break;
+
         case 'P': // number of client threads
 #ifdef HAVE_THREAD
             mExtSettings->mThreads = atoi( optarg );
@@ -620,7 +685,7 @@ void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtS
 
         case 'R':
             setRemoveService( mExtSettings );
-            break;
+	    break;
 
         case 'S': // IP type-of-service
             // TODO use a function that understands base-2
@@ -721,6 +786,7 @@ void Settings_GenerateListenerSettings( thread_Settings *client, thread_Settings
         (*listener)->mHost       = NULL;
         (*listener)->mLocalhost  = NULL;
         (*listener)->mOutputFileName = NULL;
+        (*listener)->mOutputDataFileName = NULL;
         (*listener)->mMode       = kTest_Normal;
         (*listener)->mThreadMode = kMode_Listener;
         if ( client->mHost != NULL ) {

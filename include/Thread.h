@@ -150,6 +150,11 @@ typedef int nthread_t;
     void client_init( struct thread_Settings* clients );
     void listener_spawn( struct thread_Settings* thread );
 
+    // for RDMA
+    void rdma_server_spawn( struct thread_Settings* thread );
+    void rdma_client_spawn( struct thread_Settings* thread );
+    void rdma_listener_spawn( struct thread_Settings* thread );
+
     // defined in reporter.c
     void reporter_spawn( struct thread_Settings* thread );
 

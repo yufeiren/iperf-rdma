@@ -73,6 +73,12 @@ Server::Server( thread_Settings *inSettings ) {
     // initialize buffer
     mBuf = new char[ mSettings->mBufLen ];
     FAIL_errno( mBuf == NULL, "No memory for buffer\n", mSettings );
+    
+    if ( inSettings->mThreadMode == kMode_RDMA_Server ){
+        mSettings->mCtrlBlk = new rdma_Ctrl_Blk;
+        Settings_Initialize_RDMA( mSettings );
+    }
+	
 }
 
 /* -------------------------------------------------------------------
@@ -137,7 +143,9 @@ void Server::Run( void ) {
                 ReportPacket( mSettings->reporthdr, reportstruct );
             }
 
-
+            if (mSettings->Output_file != NULL)
+	        if ( fwrite( mBuf, currLen, 1, mSettings->Output_file ) < 0 )
+	            fprintf( stderr, "Unable to write to the file stream\n");
 
         } while ( currLen > 0 ); 
         
@@ -170,6 +178,163 @@ void Server::Run( void ) {
     EndReport( mSettings->reporthdr );
 } 
 // end Recv 
+
+void Server::RunRDMA( void ) {
+
+    struct ibv_send_wr *bad_send_wr;
+    struct ibv_recv_wr *bad_recv_wr;
+    rdma_Ctrl_Blk *cb = mSettings->mCtrlBlk;
+    int rc, i;
+    struct remote_u *rmt_u;
+    struct iperf_rdma_control_msg *cm;
+    struct iperf_rdma_io_u *io_u;
+    struct ibv_wc wc;
+	
+    long currLen; 
+    max_size_t totLen = 0;
+    struct UDP_datagram* mBuf_UDP  = (struct UDP_datagram*) mBuf; 
+
+    ReportStruct *reportstruct = NULL;
+
+    reportstruct = new ReportStruct;
+
+    rc = iperf_setup_qp(cb);
+    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_qp", mSettings );
+
+    rc = iperf_setup_control_msg(cb);
+    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_control_msg", mSettings );
+
+    // get test request
+    rc = ibv_post_recv(cb->qp, &cb->rq_wr, &bad_recv_wr);
+    WARN_errno( rc != 0, "ibv_post_recv" );
+
+    iperf_rdma_poll_wait_control_msg(cb, IBV_WC_RECV, &wc);
+
+    switch (ntohl(cb->recv_buf.mode)) {
+    case kRDMAOpc_RDMA_Write:
+	    cb->rdma_opcode = kRDMAOpc_RDMA_Write;
+	    break;
+    case kRDMAOpc_RDMA_Read:
+	    cb->rdma_opcode = kRDMAOpc_RDMA_Read;
+	    break;
+    case kRDMAOpc_Send_Recv:
+	    cb->rdma_opcode = kRDMAOpc_Send_Recv;
+	    break;
+    default:
+	    break;
+    }
+    cb->rdma_iodepth = ntohl(cb->recv_buf.iodepth);
+    cb->buflen = ntohl(cb->recv_buf.size);
+
+    // enlarge recv queue depth
+    if (cb->rdma_opcode == kRDMAOpc_Send_Recv) {
+	if (cb->rdma_iodepth * 2 > IPERF_RDMA_MAX_IO_DEPTH)
+	    cb->rdma_iodepth = IPERF_RDMA_MAX_IO_DEPTH;
+	else
+            cb->rdma_iodepth *= 2;
+    }
+
+    iperf_setup_local_buf( cb );
+
+    switch (cb->rdma_opcode) {
+    case kRDMAOpc_RDMA_Write:
+    case kRDMAOpc_RDMA_Read:
+        cb->send_buf.mode = htonl(cb->rdma_opcode);
+        cb->send_buf.iodepth = htonl(cb->rdma_iodepth);
+        cb->send_buf.size = htonl(cb->buflen);
+
+        cm = &cb->send_buf;
+        for (i = 0; i < cb->rdma_iodepth; i++) {
+            rmt_u = &cm->rmt_us[i];
+            io_u = &cb->io_us[i];
+            rmt_u->buf = htonll((uint64_t) (unsigned long)io_u->addr);
+            rmt_u->rkey = htonl(io_u->mr->rkey);
+            rmt_u->size = htonl(io_u->size);
+	}
+        break;
+    case kRDMAOpc_Send_Recv:
+        cb->send_buf.mode = htonl(cb->rdma_opcode);
+        cb->send_buf.iodepth = htonl(cb->rdma_iodepth);
+        cb->send_buf.size = htonl(cb->buflen);
+	break;
+    default:
+        break;
+    }
+
+    // send back credit
+    rc = ibv_post_send(cb->qp, &cb->sq_wr, &bad_send_wr);
+    WARN_errno( rc != 0, "ibv_post_send" );
+
+    // get send completion event
+    iperf_rdma_poll_wait_control_msg(cb, IBV_WC_SEND, &wc);
+
+    if ( reportstruct != NULL ) {
+        reportstruct->packetID = 0;
+        mSettings->reporthdr = InitReport( mSettings );
+        
+        do {
+                // deal with send/recv
+		WARN( 1, "nice START testing~~~" );
+		sleep(100);
+
+            if ( isUDP( mSettings ) ) {
+                // read the datagram ID and sentTime out of the buffer 
+                reportstruct->packetID = ntohl( mBuf_UDP->id ); 
+                reportstruct->sentTime.tv_sec = ntohl( mBuf_UDP->tv_sec  );
+                reportstruct->sentTime.tv_usec = ntohl( mBuf_UDP->tv_usec ); 
+		reportstruct->packetLen = currLen;
+		gettimeofday( &(reportstruct->packetTime), NULL );
+            } else {
+		totLen += currLen;
+	    }
+        
+            // terminate when datagram begins with negative index 
+            // the datagram ID should be correct, just negated 
+	    if ( reportstruct->packetID < 0 ) {
+                reportstruct->packetID = -reportstruct->packetID;
+                currLen = -1; 
+            }
+
+	    if ( isUDP (mSettings)) {
+		ReportPacket( mSettings->reporthdr, reportstruct );
+            } else if ( !isUDP (mSettings) && mSettings->mInterval > 0) {
+                reportstruct->packetLen = currLen;
+                gettimeofday( &(reportstruct->packetTime), NULL );
+                ReportPacket( mSettings->reporthdr, reportstruct );
+            }
+            
+        } while ( currLen > 0 ); 
+        
+        
+        // stop timing 
+        gettimeofday( &(reportstruct->packetTime), NULL );
+        
+	if ( !isUDP (mSettings)) {
+		if(0.0 == mSettings->mInterval) {
+                        reportstruct->packetLen = totLen;
+                }
+		ReportPacket( mSettings->reporthdr, reportstruct );
+	}
+        CloseReport( mSettings->reporthdr, reportstruct );
+        
+        // send a acknowledgement back only if we're NOT receiving multicast 
+        if ( isUDP( mSettings ) && !isMulticast( mSettings ) ) {
+            // send back an acknowledgement of the terminating datagram 
+            write_UDP_AckFIN( ); 
+        }
+    } else {
+        FAIL(1, "Out of memory! Closing server thread\n", mSettings);
+    }
+
+    Mutex_Lock( &clients_mutex );     
+    Iperf_delete( &(mSettings->peer), &clients ); 
+    Mutex_Unlock( &clients_mutex );
+
+    DELETE_PTR( reportstruct );
+    EndReport( mSettings->reporthdr );
+    
+    return;
+} 
 
 /* ------------------------------------------------------------------- 
  * Send an AckFIN (a datagram acknowledging a FIN) on the socket, 

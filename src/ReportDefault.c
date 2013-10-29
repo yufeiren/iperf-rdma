@@ -117,7 +117,8 @@ void reporter_multistats( Transfer_Info *stats ) {
     byte_snprintf( &buffer[sizeof(buffer)/2], sizeof(buffer)/2,
                    stats->TotalLen / (stats->endTime - stats->startTime), 
                    stats->mFormat);
-
+    printf("thread %ld, stats->mUDP %d\n", pthread_self(), stats->mUDP);
+    
     if ( stats->mUDP != (char)kMode_Server ) {
         // TCP Reporting
         printf( report_sum_bw_format, 
@@ -164,12 +165,22 @@ void reporter_reportsettings( ReporterData *data ) {
         printf( server_port,
                 (isUDP( data ) ? "UDP" : "TCP"), 
                 data->mPort );
+    } else if ( data->mThreadMode == kMode_RDMA_Listener ) {
+    	printf( rdma_server_port,
+                (isUDP( data ) ? "UDP" : "TCP"), 
+                data->mPort );
+    } else if ( data->mThreadMode == kMode_RDMA_Client ) {
+    	printf( rdma_client_port,
+                data->mHost,
+                (isUDP( data ) ? "UDP" : "TCP"),
+                data->mPort );
     } else {
         printf( client_port,
                 data->mHost,
                 (isUDP( data ) ? "UDP" : "TCP"),
                 data->mPort );
     }
+    
     if ( data->mLocalhost != NULL ) {
         printf( bind_address, data->mLocalhost );
         if ( SockAddr_isMulticast( &data->connection.local ) ) {
@@ -205,6 +216,7 @@ void reporter_reportsettings( ReporterData *data ) {
  * Report a socket's peer IP address in default style
  */
 void *reporter_reportpeer( Connection_Info *stats, int ID ) {
+    printf("thread id: %ld, ID is %d\n", pthread_self(), ID);
     if ( ID > 0 ) {
         // copy the inet_ntop into temp buffers, to avoid overwriting
         char local_addr[ REPORT_ADDRLEN ];

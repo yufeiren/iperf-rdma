@@ -93,8 +93,30 @@ Listener::Listener( thread_Settings *inSettings ) {
     // initialize buffer
     mBuf = new char[ mSettings->mBufLen ];
 
-    // open listening socket 
-    Listen( ); 
+    // create output stream
+    if ( mSettings->mOutputDataFileName != NULL )
+	    if ( (mSettings->Output_file = \
+                fopen (mSettings->mOutputDataFileName, "ab")) == NULL )
+                fprintf( stderr, "Unable to open the outfile stream\n" );
+    
+    // open listening thread for RDMA
+    if ( mSettings->mThreadMode == kMode_RDMA_Listener ) {
+	mSettings->mCtrlBlk = new rdma_Ctrl_Blk;
+	Settings_Initialize_RDMA( mSettings );
+
+	// port
+	mSettings->mCtrlBlk->port = mSettings->mPort;
+	mSettings->mCtrlBlk->buflen = mSettings->mBufLen;
+	mSettings->mCtrlBlk->outputfile = mSettings->Output_file;
+
+    	ListenRDMA( );
+    // for TCP/UDP
+    } else if ( mSettings->mThreadMode == kMode_Listener ) {
+        Listen( );
+    } else {
+        FAIL( 1, "Unknown thread mode", mSettings );
+    }
+
     ReportSettings( inSettings );
 
 } // end Listener 
@@ -159,6 +181,7 @@ void Listener::Run( void ) {
         do {
             // Get a new socket
             Accept( server );
+
             if ( server->mSock == INVALID_SOCKET ) {
                 break;
             }
@@ -261,7 +284,7 @@ void Listener::Run( void ) {
             } else
 #endif
             thread_start( server );
-    
+
             // create a new socket
             if ( UDP ) {
                 mSettings->mSock = -1; 
@@ -279,6 +302,135 @@ void Listener::Run( void ) {
         Settings_Destroy( server );
     }
 } // end Run 
+
+RDMAConnState Listener::PollRDMA( thread_Settings *server ) {
+
+    int rc;
+    struct rdma_conn_param conn_param;
+    RDMAConnState rs = CONN_STATE_UNKNOWN;
+    struct rdma_cm_event *event;
+    rdma_Ctrl_Blk *cb = server->mCtrlBlk;
+    FAIL( cb == NULL, "rdma_Ctrl_Blk is NULL", mSettings );
+
+    rc = rdma_get_cm_event(cb->cm_channel, &event);
+    WARN( rc == RDMACM_ERROR, "rdma_get_cm_event" );
+
+    switch (event->event) {
+    case RDMA_CM_EVENT_CONNECT_REQUEST:
+        // the event->id is newly generated
+        // accept this connection request 
+        // and put it into accepting list
+        memset(&conn_param, 0, sizeof conn_param);
+        conn_param.responder_resources = 1;
+        conn_param.initiator_depth = 1;
+
+        rc = rdma_accept(event->id, &conn_param);
+        WARN( rc == RDMACM_ERROR, "rdma_accept" );
+	//        acceptingList.push_back(event->id);
+        rs = CONNECT_REQUEST;
+        break;
+    case RDMA_CM_EVENT_ESTABLISHED:
+        // the event->id is newly generated
+	    //        acceptingList.remove(event->id);
+	    //        connList.push_back(event->id);
+        server->mCtrlBlk->cm_id = event->id;
+        rs = CONNECTED;
+        break;
+    case RDMA_CM_EVENT_DISCONNECTED:
+        WARN( 1, "Disconnect event");
+        rs = DISCONNECTED;
+        break;
+    default:
+        WARN( 1, "Unexpected event");
+	rs = CONN_STATE_UNKNOWN;
+	break;
+    }
+
+    rc = rdma_ack_cm_event(event);
+    WARN( rc == RDMACM_ERROR, "rdma_ack_cm_event" );
+    return rs;
+}
+
+
+void Listener::RunRDMA( void ) {
+
+    bool client = false, UDP = isUDP( mSettings ), mCount = (mSettings->mThreads != 0);
+    Iperf_ListEntry *exist, *listtemp;
+
+    RDMAConnState rs = CONN_STATE_UNKNOWN;
+
+    if ( mSettings->mHost != NULL ) {
+        client = true;
+        SockAddr_remoteAddr( mSettings );
+    }
+
+    // Accept each packet, 
+    // If there is no existing client, then start  
+    // a new thread to service the new client 
+    // The listener runs in a single thread 
+    // Thread per client model is followed
+    // Listener is responsible for Connect Request detecting,
+    // accept request (establishment), and disconnecting detecting.
+    do {
+        rs = PollRDMA( server );
+	WARN( rs == CONN_STATE_UNKNOWN, "Connection is in unknown status" );
+
+        if (rs != CONNECTED)
+            continue;
+
+        Settings_Copy( mSettings, &server );
+        Settings_Copy_RDMA( mSettings, &server );
+
+        server->mThreadMode = kMode_RDMA_Server;
+
+	server->mCtrlBlk->cm_id->context = server;
+
+	memcpy(&server->local, \
+		rdma_get_local_addr(server->mCtrlBlk->cm_id), \
+		sizeof(iperf_sockaddr)) ;
+	memcpy(&server->peer, \
+		rdma_get_peer_addr(server->mCtrlBlk->cm_id), \
+		sizeof(iperf_sockaddr)) ;
+			
+        // Create an entry for the connection list
+        listtemp = new Iperf_ListEntry;
+        memcpy(listtemp, &server->peer, sizeof(iperf_sockaddr));
+        listtemp->next = NULL;
+
+        // See if we need to do summing
+        Mutex_Lock( &clients_mutex );
+        exist = Iperf_hostpresent( &server->peer, clients); 
+    
+        if ( exist != NULL ) {
+            // Copy group ID
+            listtemp->holder = exist->holder;
+            server->multihdr = exist->holder;
+        } else {
+            server->mThreads = 0;
+            Mutex_Lock( &groupCond );
+            groupID--;
+            listtemp->holder = InitMulti( server, groupID );
+            server->multihdr = listtemp->holder;
+            Mutex_Unlock( &groupCond );
+        }
+    
+        // Store entry in connection list
+        Iperf_pushback( listtemp, &clients ); 
+        Mutex_Unlock( &clients_mutex ); 
+		
+	server->mSock = ++ PseudoSock;
+        thread_start( server );
+    
+        // Prep for next connection
+        if ( !isSingleClient( mSettings ) ) {
+            mClients--;
+        }
+
+    } while ( !sInterupted && (!mCount || ( mCount && mClients > 0 )) );
+    
+    //    Settings_Destroy( server );
+
+} // end RunRDMA
 
 /* -------------------------------------------------------------------
  * Setup a socket listening on a port.
@@ -349,6 +501,32 @@ void Listener::Listen( ) {
     }
 #endif
 } // end Listen
+
+/* -------------------------------------------------------------------
+ * Setup a RDMA listening on a port.
+ * If inLocalhost is not null, bind to that address rather than the
+ * wildcard server address, specifying what incoming interface to
+ * accept connections on.
+ * ------------------------------------------------------------------- */
+void Listener::ListenRDMA( ) {
+    int rc;
+    rdma_Ctrl_Blk *cb = mSettings->mCtrlBlk;
+    FAIL( cb == NULL, "Contrl Block is NULL", mSettings );
+
+    SockAddr_localAddr( mSettings );
+
+    cb->cm_channel = rdma_create_event_channel();
+    WARN( cb->cm_channel == NULL, "rdma_create_event_channel" );
+
+    rc = rdma_create_id(cb->cm_channel, &cb->cm_id, cb, RDMA_PS_TCP);
+    WARN( rc == RDMACM_ERROR, "rdma_create_event_channel" );
+	
+    rc = rdma_bind_addr(cb->cm_id, (struct sockaddr *) &mSettings->local);
+    WARN( rc == RDMACM_ERROR, "rdma_bind_addr" );
+
+    rc = rdma_listen(cb->cm_id, IPERF_RDMA_MAX_LISTEN_BACKLOG);
+    WARN( rc == RDMACM_ERROR, "rdma_listen" );
+} // end ListenRDMA
 
 /* -------------------------------------------------------------------
  * Joins the multicast group, with the default interface.

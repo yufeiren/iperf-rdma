@@ -72,8 +72,16 @@ Usage: %s [-s|-c host] [options]\n\
 Try `%s --help' for more information.\n";
 
 const char usage_long1[] = "\
-Usage: iperf [-s|-c host] [options]\n\
-       iperf [-h|--help] [-v|--version]\n\
+Usage: iperf-rdma [-s|-c host] [-e] [options]\n\
+       iperf-rdma [-h|--help] [-v|--version]\n\
+\n\
+RDMA specific:\n\
+  -e, --rdma               enable RDMA extention\n\
+  -k, --rdma_opcode [write/read/send] set RDMA test mode:\n\
+                                      write for RDMA_WRITE\n\
+                                      read for RDMA_READ\n\
+                                      send for SEND/RECV\n\
+  -q, --rdma_iodepth #     Maximum number of outstanding tasks\n\
 \n\
 Client/Server:\n\
   -f, --format    [kmKM]   format to report: Kbits, Mbits, KBytes, MBytes\n\
@@ -154,6 +162,12 @@ const char server_port[] =
 
 const char client_port[] =
 "Client connecting to %s, %s port %d\n";
+
+const char rdma_server_port[] =
+"RDMA Server listening on %s port %d\n";
+
+const char rdma_client_port[] =
+"RDMA Client connecting to %s, %s port %d\n";
 
 const char bind_address[] =
 "Binding to local address %s\n";
@@ -329,6 +343,15 @@ const char warn_invalid_report_style[] =
 
 const char warn_invalid_report[] =
 "WARNING: unknown reporting type \"%c\", ignored\n valid options are:\n\t exclude: C(connection) D(data) M(multicast) S(settings) V(server) report\n\n";
+
+const char warn_invalid_rdma_opt_placement[] =
+"WARNING: option -e should be placed after -c or -s\n\n";
+
+const char warn_invalid_rdma_opcode[] =
+"WARNING: unknown rdma opcode \"%s\", valid options are:\n\twrite read send\n\n";
+
+const char warn_invalid_rdma_iodepth[] =
+"WARNING: rdma iodepth should be no larger than \"%d\"\n\n";
 
 #ifdef __cplusplus
 } /* end extern "C" */

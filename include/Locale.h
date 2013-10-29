@@ -78,6 +78,10 @@ extern const char server_port[];
 
 extern const char client_port[];
 
+extern const char rdma_server_port[];
+
+extern const char rdma_client_port[];
+
 extern const char bind_address[];
 
 extern const char multicast_ttl[];
@@ -179,6 +183,12 @@ extern const char warn_invalid_single_threaded[];
 extern const char warn_invalid_report_style[];
 
 extern const char warn_invalid_report[];
+
+extern const char warn_invalid_rdma_opt_placement[];
+
+extern const char warn_invalid_rdma_opcode[];
+
+extern const char warn_invalid_rdma_iodepth[];
 
 #ifdef __cplusplus
 } /* end extern "C" */

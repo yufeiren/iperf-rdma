@@ -121,7 +121,8 @@ void PrintMSS( ReporterData *stats );
 
 MultiHeader* InitMulti( thread_Settings *agent, int inID ) {
     MultiHeader *multihdr = NULL;
-    if ( agent->mThreads > 1 || agent->mThreadMode == kMode_Server ) {
+    if ( agent->mThreads > 1 || agent->mThreadMode == kMode_Server \
+        || agent->mThreadMode == kMode_RDMA_Server ) {
         if ( isMultipleReport( agent ) ) {
             multihdr = malloc(sizeof(MultiHeader) +  sizeof(ReporterData) +
                               NUM_MULTI_SLOTS * sizeof(Transfer_Info));

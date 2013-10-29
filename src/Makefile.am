@@ -1,4 +1,4 @@
-bin_PROGRAMS = iperf
+bin_PROGRAMS = iperf-rdma
 
 LIBCOMPAT_LDADDS = @STRIP_BEGIN@ \
 		   $(top_builddir)/compat/libcompat.a \
@@ -12,9 +12,9 @@ AM_CPPFLAGS = @STRIP_BEGIN@ \
 AM_CXXFLAGS = -Wall
 AM_CFLAGS = -Wall
 
-iperf_LDFLAGS = @CFLAGS@ @PTHREAD_CFLAGS@ @WEB100_CFLAGS@ @DEFS@
+iperf_rdma_LDFLAGS = @CFLAGS@ @PTHREAD_CFLAGS@ @WEB100_CFLAGS@ @DEFS@
 
-iperf_SOURCES = \
+iperf_rdma_SOURCES = \
 		Client.cpp \
 		Extractor.c \
 		Launch.cpp \
@@ -36,4 +36,4 @@ iperf_SOURCES = \
 		stdio.c \
 		tcp_window_size.c
 
-iperf_LDADD = $(LIBCOMPAT_LDADDS)
+iperf_rdma_LDADD = $(LIBCOMPAT_LDADDS)

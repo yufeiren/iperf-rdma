@@ -57,6 +57,7 @@
 
 #include "Thread.h"
 #include "Settings.hpp"
+#include "rdma.h"
 
 class Listener;
 
@@ -71,16 +72,23 @@ public:
     // accepts connections and starts Servers
     void Run( void );
 
+    // RDMA version
+    void RunRDMA( void );
+
     // Starts the Servers as a daemon 
     void runAsDaemon( const char *, int );
 
     void Listen( );
+
+    void ListenRDMA( );
 
     void McastJoin( );
 
     void McastSetTTL( int val );
 
     void Accept( thread_Settings *server );
+
+    RDMAConnState PollRDMA( thread_Settings *server );
 
     void UDPSingleServer ();
 
@@ -90,6 +98,9 @@ protected:
     thread_Settings *mSettings;
     thread_Settings *server;
 
+	//private:
+	//    std::list<struct rdma_cm_id *> acceptingList;
+	//    std::list<struct rdma_cm_id *> connList;
 }; // end class Listener
 
 #endif // LISTENER_H

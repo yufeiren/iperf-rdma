@@ -71,6 +71,8 @@ public:
     // accepts connection and receives data
     void Run( void );
 
+    void RunRDMA( void );
+
     void write_UDP_AckFIN( );
 
     static void Sig_Int( int inSigno );

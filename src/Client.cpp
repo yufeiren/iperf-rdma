@@ -1,3 +1,8 @@
+/*
+ * This file is extended from original iperf for RDMA integration.
+ * by Yufei Ren <yufei.ren@stonybrook.edu>
+ */
+
 /*--------------------------------------------------------------- 
  * Copyright (c) 1999,2000,2001,2002,2003                              
  * The Board of Trustees of the University of Illinois            
@@ -51,6 +56,7 @@
  * sending and receiving data, then closes the socket.
  * ------------------------------------------------------------------- */
 
+#include <list>
 #include "headers.h"
 #include "Client.hpp"
 #include "Thread.h"
@@ -60,6 +66,9 @@
 #include "delay.hpp"
 #include "util.h"
 #include "Locale.h"
+#include "rdma.h"
+
+using std::list;
 
 /* -------------------------------------------------------------------
  * Store server hostname, optionally local hostname, and socket info.
@@ -83,8 +92,18 @@ Client::Client( thread_Settings *inSettings ) {
         }
     }
 
-    // connect
-    Connect( );
+    // connect TCP/UDP
+    if ( mSettings->mThreadMode == kMode_Client ) {
+    	Connect( );
+    // connect RDMA
+    } else if ( mSettings->mThreadMode == kMode_RDMA_Client ) {
+        mSettings->mCtrlBlk = new rdma_Ctrl_Blk;
+        Settings_Initialize_RDMA( mSettings );
+
+	ConnectRDMA( );
+    }
+    else
+	    FAIL( 1, "Unknown thread mode", mSettings );
 
     if ( isReport( inSettings ) ) {
         ReportSettings( inSettings );
@@ -194,6 +213,166 @@ void Client::RunTCP( void ) {
     DELETE_PTR( reportstruct );
     EndReport( mSettings->reporthdr );
 }
+
+
+void Client::RunRDMA( void ) {
+
+    unsigned long currLen = 0; 
+    struct itimerval it;
+    max_size_t totLen = 0;
+
+    int err;
+    int rc, i;
+
+    struct ibv_wc *wc;
+    struct ibv_send_wr* bad_wr;
+    
+    // Indicates if the stream is readable 
+    bool canRead = true, mMode_Time = isModeTime( mSettings ); 
+
+    ReportStruct *reportstruct = NULL;
+
+    list<struct iperf_rdma_io_u *> io_flight_list;
+    list<struct iperf_rdma_io_u *> io_completed_list;
+
+    rdma_Ctrl_Blk *cb = mSettings->mCtrlBlk;
+
+    struct iperf_rdma_io_u *io_u;
+    int nr;
+
+    wc = (struct ibv_wc *) malloc ( cb->rdma_iodepth * \
+				    sizeof (struct ibv_wc *) );
+    FAIL( wc == NULL, "malloc", mSettings );
+
+    // InitReport handles Barrier for multiple Streams
+    mSettings->reporthdr = InitReport( mSettings );
+    reportstruct = new ReportStruct;
+    reportstruct->packetID = 0;
+
+    lastPacketTime.setnow();
+    if ( mMode_Time ) {
+	memset (&it, 0, sizeof (it));
+	it.it_value.tv_sec = (int) (mSettings->mAmount / 100.0);
+	it.it_value.tv_usec = (int) 10000 * (mSettings->mAmount -
+	    it.it_value.tv_sec * 100.0);
+	err = setitimer( ITIMER_REAL, &it, NULL );
+	if ( err != 0 ) {
+	    perror("setitimer");
+	    exit(1);
+	}
+    }
+
+    // asynchronous I/O performing
+
+    do {
+        // if not fillup the io depth
+        // submit more task
+        while (io_flight_list.size() < (unsigned) cb->rdma_iodepth) {
+            if (io_completed_list.empty())
+	        FAIL( 1, "the completed list should no be empty", mSettings );
+            io_u = io_completed_list.front();
+            io_completed_list.pop_front();
+
+	    // load data from input file
+            if ( isFileInput( mSettings ) 
+                && ( (mSettings->rdma_opcode == kRDMAOpc_RDMA_Write) ||
+                (mSettings->rdma_opcode == kRDMAOpc_Send_Recv) ) ) {
+                Extractor_getNextDataBlock( io_u->addr, mSettings );
+                canRead = Extractor_canRead( mSettings ) != 0;
+	    } else {
+                canRead = true;
+	    }
+
+	    rc = ibv_post_send(cb->qp, &io_u->sq_wr, &bad_wr);
+	    WARN_errno( rc != 0, "ibv_post_send");
+
+	    io_flight_list.push_back(io_u);
+        }
+
+        // reap at least one task
+again:
+        nr = iperf_rdma_poll_comp(cb, io_flight_list.size(), wc);
+        if (nr == 0)
+            goto again;
+
+	for ( i = 0; i < nr; i++ ) {
+            // find each one in inflight list
+            io_u = NULL;
+            for (list<struct iperf_rdma_io_u *>::iterator it = io_flight_list.begin(); it != io_flight_list.end(); ++it) {
+                if (wc[i].wr_id == ((struct iperf_rdma_io_u *)(*it))->wr_id) {
+                    io_u = *it;
+                    break;
+		}
+	    }
+	    FAIL( io_u == NULL, "can not find work request", mSettings );
+
+	    io_flight_list.remove(io_u);
+
+	    currLen += io_u->size;
+	    io_completed_list.push_back(io_u);
+	}
+
+	totLen += currLen;
+	
+	if( mSettings->mInterval > 0 ) {
+    	    gettimeofday( &(reportstruct->packetTime), NULL );
+            reportstruct->packetLen = currLen;
+            ReportPacket( mSettings->reporthdr, reportstruct );
+        }
+
+        if ( !mMode_Time ) {
+            /* mAmount may be unsigned, so don't let it underflow! */
+            if( mSettings->mAmount >= currLen ) {
+                mSettings->mAmount -= currLen;
+            } else {
+                mSettings->mAmount = 0;
+            }
+        }
+
+    } while ( ! (sInterupted  || 
+                   (!mMode_Time  &&  0 >= mSettings->mAmount)) && canRead ); 
+
+    // reap the left events
+    while (!io_flight_list.empty()) {
+pollagain:
+        nr = iperf_rdma_poll_comp(cb, io_flight_list.size(), wc);
+        if (nr == 0)
+            goto pollagain;
+
+	for ( i = 0; i < nr; i++ ) {
+            // find each one in inflight list
+            io_u = NULL;
+            for (list<struct iperf_rdma_io_u *>::iterator it = io_flight_list.begin(); it != io_flight_list.end(); ++it) {
+                if (wc[i].wr_id == ((struct iperf_rdma_io_u *)(*it))->wr_id) {
+                    io_u = *it;
+                    break;
+		}
+	    }
+	    FAIL( io_u == NULL, "can not find work request", mSettings );
+
+	    io_flight_list.remove(io_u);
+
+	    currLen += io_u->size;
+	    io_completed_list.push_back(io_u);
+	}
+    }
+
+    // sending completion event to server side
+
+    // stop timing
+    gettimeofday( &(reportstruct->packetTime), NULL );
+
+    // if we're not doing interval reporting, report the entire transfer as one big packet
+    if(0.0 == mSettings->mInterval) {
+        reportstruct->packetLen = totLen;
+        ReportPacket( mSettings->reporthdr, reportstruct );
+    }
+    CloseReport( mSettings->reporthdr, reportstruct );
+
+    DELETE_PTR( reportstruct );
+    EndReport( mSettings->reporthdr );
+}
+
 
 /* ------------------------------------------------------------------- 
  * Send data using the connected UDP/TCP socket, 
@@ -420,6 +599,142 @@ void Client::Connect( ) {
     getpeername( mSettings->mSock, (sockaddr*) &mSettings->peer,
                  &mSettings->size_peer );
 } // end Connect
+
+
+/* -------------------------------------------------------------------
+ * Setup a socket connected to a server use librdmacm.
+ * If inLocalhost is not null, bind to that address, specifying
+ * which outgoing interface to use.
+ * ------------------------------------------------------------------- */
+
+void Client::ConnectRDMA( ) {
+
+    int rc;
+    rdma_Ctrl_Blk *cb = mSettings->mCtrlBlk;
+    struct rdma_conn_param conn_param;
+    SockAddr_remoteAddr( mSettings );
+
+    assert( mSettings->inHostname != NULL );
+
+    // create an internet socket
+    //    int type = ( isUDP( mSettings )  ?  SOCK_DGRAM : SOCK_STREAM);
+
+    int domain = (SockAddr_isIPv6( &mSettings->peer ) ? 
+#ifdef HAVE_IPV6
+                  AF_INET6
+#else
+                  AF_INET
+#endif
+                  : AF_INET);
+
+    if (domain == AF_INET)
+        ((struct sockaddr_in *) &cb->sin)->sin_port = htons(cb->port);
+    else
+        ((struct sockaddr_in6 *) &cb->sin)->sin6_port = htons(cb->port);
+
+    cb->cm_channel = rdma_create_event_channel();
+    WARN( cb->cm_channel == NULL, "rdma_create_event_channel" );
+
+    rc = rdma_create_id(cb->cm_channel, &cb->cm_id, cb, RDMA_PS_TCP);
+    WARN( rc == RDMACM_ERROR, "rdma_create_event_channel" );
+
+    // resolve address
+    rc = rdma_resolve_addr(cb->cm_id, NULL, \
+			   (struct sockaddr *) &mSettings->peer, 2000);
+    WARN( rc == RDMACM_ERROR, "rdma_create_event_channel" );
+
+    rc = get_next_channel_event(cb->cm_channel, RDMA_CM_EVENT_ADDR_RESOLVED);
+    WARN( rc == RDMACM_ERROR, "get next event failed" );
+
+    // resolve route
+    rc = rdma_resolve_route(cb->cm_id, 2000);
+    WARN( rc == RDMACM_ERROR, "rdma_resolve_route" );
+
+    rc = get_next_channel_event(cb->cm_channel, RDMA_CM_EVENT_ROUTE_RESOLVED);
+    WARN( rc == RDMACM_ERROR, "get next event failed" );
+
+    rc = iperf_setup_qp(cb);
+    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_qp", mSettings );
+
+    rc = iperf_setup_control_msg(cb);
+    FAIL( rc == RDMAIBV_ERROR, "iperf_setup_control_msg", mSettings );
+
+    memset(&conn_param, 0, sizeof conn_param);
+    conn_param.responder_resources = 1;
+    conn_param.initiator_depth = 1;
+    conn_param.retry_count = 10;
+
+    rc = rdma_connect(cb->cm_id, &conn_param);
+    FAIL( rc == RDMACM_ERROR, "rdma_connect", mSettings );
+
+    rc = get_next_channel_event(cb->cm_channel, RDMA_CM_EVENT_ESTABLISHED);
+    WARN( rc == RDMACM_ERROR, "get next event (RDMA_CM_EVENT_ESTABLISHED) failed" );
+
+    memcpy(&mSettings->local, rdma_get_local_addr(cb->cm_id), \
+	   sizeof(iperf_sockaddr));
+    memcpy(&mSettings->peer, rdma_get_peer_addr(cb->cm_id), \
+	   sizeof(iperf_sockaddr));
+
+    Mutex_Lock( &PseudoSockCond );
+    mSettings->mSock = ++ PseudoSock;
+    Mutex_Unlock( &PseudoSockCond );
+	
+    return;
+} // end ConnectRDMA
+
+
+/* ------------------------------------------------------------------- 
+ * Exchange connection information with server side and setup buffers.
+ * Client: mode(4 bytes) + I/O size(4 bytes) + iodepth(4 bytes)
+ * if mode is RDMA_WRITE or RDMA_READ
+ *     Server: # of credits(4 bytes) + credits
+ *         A credit = buffer addr(8 bits) + rkey(4 bytes) + size(4 bytes)
+ * else if mode is Send and Recv
+ *     Server: iodepth in server side(4 bytes)
+ * ------------------------------------------------------------------- */ 
+
+void Client::InitiateServerRDMA( ) {
+    int rc;
+    struct ibv_send_wr *bad_send_wr;
+    struct ibv_recv_wr *bad_recv_wr;
+    rdma_Ctrl_Blk *cb = mSettings->mCtrlBlk;
+    struct ibv_wc wc;
+
+    iperf_setup_local_buf( cb );
+
+    // sending test mode, and io depth
+    // then receive credits for RDMA_Write and RDMA_Read
+    rc = ibv_post_recv(cb->qp, &cb->rq_wr, &bad_recv_wr);
+    WARN_errno( rc != 0, "ibv_post_recv" );
+
+    // setup send_buf
+    cb->send_buf.mode = htonl(cb->rdma_opcode);
+    cb->send_buf.iodepth = htonl(cb->rdma_iodepth);
+    cb->send_buf.size = htonl(cb->buflen);
+
+    rc = ibv_post_send(cb->qp, &cb->sq_wr, &bad_send_wr);
+    WARN_errno( rc != 0, "ibv_post_send" );
+
+    // get send completion event
+    iperf_rdma_poll_wait_control_msg(cb, IBV_WC_SEND, &wc);
+
+    // wait for credit
+    iperf_rdma_poll_wait_control_msg(cb, IBV_WC_RECV, &wc);
+
+    switch (cb->rdma_opcode) {
+    case kRDMAOpc_RDMA_Write:
+    case kRDMAOpc_RDMA_Read:
+        // update request information
+        iperf_rdma_setup_credit(cb);
+        break;
+    case kRDMAOpc_Send_Recv:
+        // show remote iodepth
+        iperf_rdma_setup_sendbuf(cb);
+        break;
+    default:
+        break;
+    }
+}
 
 /* ------------------------------------------------------------------- 
  * Send a datagram on the socket. The datagram's contents should signify 

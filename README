@@ -1,7 +1,16 @@
-This is iperf-rdma, an RDMA network benchmark extended from iperf.
+This is iperf-rdma TCP/UDP and RDMA network benchmark.  It derived
+from iperf with RDMA extentions.
+
+start server by enabling RDMA mode:
+  iperf -s -e [-q iodepth]
+  iperf --server --rdma --rdma_iodepth=[iodepth]
+
+start client 
+  iperf -c -e [-q iodepth] [-k opcode]
+  iperf --client --rdma --rdma_iodepth=[iodepth] --rdma_opcode=[read/write/send]
 
 
-
+using private_data to exchange test mode
 Original README:
 
 This is Iperf v2.0.0, a tool for measuring Internet bandwidth performance.

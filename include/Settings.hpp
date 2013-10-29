@@ -75,7 +75,10 @@ typedef enum ThreadMode {
     kMode_Server,
     kMode_Client,
     kMode_Reporter,
-    kMode_Listener
+    kMode_Listener,
+    kMode_RDMA_Server,
+    kMode_RDMA_Client,
+    kMode_RDMA_Listener
 } ThreadMode;
 
 // report mode
@@ -94,7 +97,10 @@ typedef enum TestMode {
     kTest_Unknown
 } TestMode;
 
+
 #include "Reporter.h"
+
+
 /*
  * The thread_Settings is a structure that holds all
  * options for a given execution of either a client
@@ -112,7 +118,9 @@ typedef struct thread_Settings {
     char*  mHost;                   // -c
     char*  mLocalhost;              // -B
     char*  mOutputFileName;         // -o
+    char*  mOutputDataFileName;     // -O
     FILE*  Extractor_file;
+    FILE*  Output_file;
     ReportHeader*  reporthdr;
     MultiHeader*   multihdr;
     struct thread_Settings *runNow;
@@ -171,6 +179,9 @@ typedef struct thread_Settings {
     Socklen_t size_local;
     nthread_t mTID;
     char* mCongestion;
+    rdma_Ctrl_Blk *mCtrlBlk;
+    int rdma_iodepth;
+    RDMAOpcode rdma_opcode;
 #if defined( HAVE_WIN32_THREAD )
     HANDLE mHandle;
 #endif
@@ -389,8 +400,14 @@ typedef struct server_hdr {
     // set to defaults
     void Settings_Initialize( thread_Settings* main );
 
+    // set rdma control block to defaults
+    void Settings_Initialize_RDMA( thread_Settings* main );
+
     // copy structure
     void Settings_Copy( thread_Settings* from, thread_Settings** into );
+
+    // copy rdma structure inside Settings
+    void Settings_Copy_RDMA( thread_Settings* from, thread_Settings** into );
 
     // free associated memory
     void Settings_Destroy( thread_Settings *mSettings );

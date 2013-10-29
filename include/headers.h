@@ -138,6 +138,12 @@
 /** Added for daemonizing the process */
     #include <syslog.h>
 
+/** Added for semaphore */
+    #include <semaphore.h>
+
+/** Added for PRIx64 */
+    #include <inttypes.h>
+
 SPECIAL_OSF1_EXTERN_C_START
     #include <netdb.h>
 SPECIAL_OSF1_EXTERN_C_STOP
@@ -156,6 +162,9 @@ SPECIAL_OSF1_EXTERN_C_STOP
  * rather than checking rc < 0 as unix usually does */
     #define SOCKET_ERROR   -1
     #define INVALID_SOCKET -1
+
+    #define RDMACM_ERROR   -1
+    #define RDMAIBV_ERROR   -1
 
 #endif /* not defined WIN32 */
 
@@ -186,6 +195,8 @@ typedef uint64_t max_size_t;
 #include "gettimeofday.h"
 #include "inet_aton.h"
 #include "snprintf.h"
+
+#include "rdma.h"
 
 #ifndef SHUT_RD
     #define SHUT_RD   0
