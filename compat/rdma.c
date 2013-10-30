@@ -291,6 +291,7 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb)
             io_u->sq_wr.wr.rdma.rkey = ntohl(rmt_u->rkey);
             io_u->sq_wr.send_flags = IBV_SEND_SIGNALED;
             io_u->sq_wr.sg_list = &io_u->rdma_sgl;
+            io_u->sq_wr.num_sge = 1;
             io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
 	    break;
 	case kRDMAOpc_RDMA_Read:
@@ -300,12 +301,16 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb)
             io_u->sq_wr.wr.rdma.rkey = ntohl(rmt_u->rkey);
             io_u->sq_wr.send_flags = IBV_SEND_SIGNALED;
             io_u->sq_wr.sg_list = &io_u->rdma_sgl;
+            io_u->sq_wr.num_sge = 1;
             io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
 	    break;
 	case kRDMAOpc_Send_Recv:
             io_u->sq_wr.wr_id = io_u->wr_id;
             io_u->sq_wr.opcode = IBV_WR_SEND;
             io_u->sq_wr.send_flags = IBV_SEND_SIGNALED;
+            io_u->sq_wr.sg_list = &io_u->rdma_sgl;
+            io_u->sq_wr.num_sge = 1;
+            io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
 	    break;
         default:
             break;
