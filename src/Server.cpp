@@ -175,8 +175,7 @@ void Server::Run( void ) {
 
 void Server::RunRDMA( void ) {
 
-    struct ibv_send_wr *bad_send_wr;
-    struct ibv_recv_wr *bad_recv_wr;
+    struct ibv_send_wr *bad_wr;
     rdma_Ctrl_Blk *cb = mSettings->mCtrlBlk;
     int rc, i;
     struct remote_u *rmt_u;
@@ -191,10 +190,6 @@ void Server::RunRDMA( void ) {
     ReportStruct *reportstruct = NULL;
 
     reportstruct = new ReportStruct;
-
-    // get test request
-    rc = ibv_post_recv(cb->qp, &cb->rq_wr, &bad_recv_wr);
-    WARN_errno( rc != 0, "ibv_post_recv" );
 
     iperf_rdma_poll_wait_control_msg(cb, IBV_WC_RECV, &wc);
 
@@ -250,7 +245,7 @@ void Server::RunRDMA( void ) {
     }
 
     // send back credit
-    rc = ibv_post_send(cb->qp, &cb->sq_wr, &bad_send_wr);
+    rc = ibv_post_send(cb->qp, &cb->sq_wr, &bad_wr);
     WARN_errno( rc != 0, "ibv_post_send" );
 
     // get send completion event

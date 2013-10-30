@@ -299,6 +299,7 @@ again:
         if (nr == 0)
             goto again;
 
+        currLen = 0;
 	for ( i = 0; i < nr; i++ ) {
             // find each one in inflight list
             io_u = NULL;

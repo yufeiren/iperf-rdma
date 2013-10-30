@@ -228,6 +228,8 @@ int iperf_rdma_poll_wait_control_msg(rdma_Ctrl_Blk *cb, \
 
     rc = ibv_poll_cq(cb->cq, 1, wc);
     WARN( rc != 1, "ibv_poll_cq" );
+    WARN( (wc->status != 0) && (wc->status != IBV_WC_WR_FLUSH_ERR), \
+         "cq completion failed status" );
 
     WARN( wc->opcode != opcode, "get wrong completion event" );
 
@@ -282,6 +284,7 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb)
             io_u->sq_wr.opcode = IBV_WR_RDMA_WRITE;
             io_u->sq_wr.wr.rdma.remote_addr = ntohll(rmt_u->buf);
             io_u->sq_wr.wr.rdma.rkey = ntohl(rmt_u->rkey);
+            io_u->sq_wr.send_flags = IBV_SEND_SIGNALED;
             io_u->sq_wr.sg_list = &io_u->rdma_sgl;
             io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
 	    break;
@@ -290,6 +293,7 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb)
             io_u->sq_wr.opcode = IBV_WR_RDMA_READ;
             io_u->sq_wr.wr.rdma.remote_addr = ntohll(rmt_u->buf);
             io_u->sq_wr.wr.rdma.rkey = ntohl(rmt_u->rkey);
+            io_u->sq_wr.send_flags = IBV_SEND_SIGNALED;
             io_u->sq_wr.sg_list = &io_u->rdma_sgl;
             io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
 	    break;

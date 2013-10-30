@@ -307,12 +307,17 @@ void Listener::AcceptRDMA( thread_Settings *server ) {
     int rc;
     rdma_Ctrl_Blk *cb = server->mCtrlBlk;
     struct rdma_conn_param conn_param;
+    struct ibv_recv_wr *bad_wr;
 
     rc = iperf_setup_qp(cb);
     FAIL( rc == RDMAIBV_ERROR, "iperf_setup_qp", mSettings );
 
     rc = iperf_setup_control_msg(cb);
     FAIL( rc == RDMAIBV_ERROR, "iperf_setup_control_msg", mSettings );
+
+    // prepare for test request
+    rc = ibv_post_recv(cb->qp, &cb->rq_wr, &bad_wr);
+    WARN_errno( rc != 0, "ibv_post_recv" );
 
     memset(&conn_param, 0, sizeof(conn_param));
     conn_param.responder_resources = 1;
