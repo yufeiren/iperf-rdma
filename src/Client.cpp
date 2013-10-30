@@ -241,7 +241,8 @@ void Client::RunRDMA( void ) {
     int nr;
 
     wc = (struct ibv_wc *) malloc ( cb->rdma_iodepth * \
-				    sizeof (struct ibv_wc *) );
+				    sizeof (struct ibv_wc) );
+    memset(wc, '\0', cb->rdma_iodepth * sizeof (struct ibv_wc));
     FAIL( wc == NULL, "malloc", mSettings );
 
     // InitReport handles Barrier for multiple Streams

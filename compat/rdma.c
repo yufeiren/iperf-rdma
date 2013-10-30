@@ -243,7 +243,7 @@ int iperf_rdma_poll_comp(rdma_Ctrl_Blk *cb, int in_flight, struct ibv_wc *wc)
 {
     struct ibv_cq *ev_cq;
     void *ev_ctx;
-    int rc, nr;
+    int rc, nr, i;
 
     rc = ibv_get_cq_event(cb->cq_channel, &ev_cq, &ev_ctx);
     WARN( rc == RDMAIBV_ERROR, "ibv_get_cq_event" );
@@ -257,6 +257,11 @@ again:
     WARN( nr < 0, "ibv_poll_cq" );
     if (nr == 0)
         goto again;
+
+    for (i = 0; i < nr; i ++) {
+        WARN( (wc[i].status != 0) && (wc[i].status != IBV_WC_WR_FLUSH_ERR), \
+             "cq completion failed status" );
+    }
 
     ibv_ack_cq_events(cb->cq, nr);
 
