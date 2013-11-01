@@ -167,12 +167,12 @@ void reporter_reportsettings( ReporterData *data ) {
                 data->mPort );
     } else if ( data->mThreadMode == kMode_RDMA_Listener ) {
     	printf( rdma_server_port,
-                (isUDP( data ) ? "UDP" : "TCP"), 
+                (isUDP( data ) ? "RDMA_PS_UDP" : "RDMA_PS_TCP"),
                 data->mPort );
     } else if ( data->mThreadMode == kMode_RDMA_Client ) {
     	printf( rdma_client_port,
                 data->mHost,
-                (isUDP( data ) ? "UDP" : "TCP"),
+                (isUDP( data ) ? "RDMA_PS_UDP" : "RDMA_PS_TCP"),
                 data->mPort );
     } else {
         printf( client_port,

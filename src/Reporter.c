@@ -283,7 +283,8 @@ ReportHeader* InitReport( thread_Settings *agent ) {
         /*
          * Update the ReportRoot to include this report.
          */
-        if ( reporthdr->report.mThreadMode == kMode_Client &&
+        if ( (reporthdr->report.mThreadMode == kMode_Client ||
+             reporthdr->report.mThreadMode == kMode_RDMA_Client) &&
              reporthdr->multireport != NULL ) {
             // syncronize watches on my mark......
             BarrierClient( reporthdr );

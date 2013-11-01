@@ -186,7 +186,7 @@ void Client::RunTCP( void ) {
     	    gettimeofday( &(reportstruct->packetTime), NULL );
             reportstruct->packetLen = currLen;
             ReportPacket( mSettings->reporthdr, reportstruct );
-        }	
+        }
 
         if ( !mMode_Time ) {
             /* mAmount may be unsigned, so don't let it underflow! */
@@ -682,7 +682,7 @@ void Client::ConnectRDMA( ) {
 	   sizeof(iperf_sockaddr));
 
     Mutex_Lock( &PseudoSockCond );
-    mSettings->mSock = ++ PseudoSock;
+    mSettings->mSock = PseudoSock ++;
     Mutex_Unlock( &PseudoSockCond );
 	
     return;

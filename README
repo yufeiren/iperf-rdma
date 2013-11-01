@@ -2,8 +2,8 @@ This is iperf-rdma TCP/UDP and RDMA network benchmark.  It derived
 from iperf with RDMA extentions.
 
 start server by enabling RDMA mode:
-  iperf-rdma -s -e [-q iodepth]
-  iperf-rdma --server --rdma --rdma_iodepth=[iodepth]
+  iperf-rdma -s -e
+  iperf-rdma --server --rdma
 
 start client 
   iperf-rdma -c [ipaddr] -e [-q iodepth] [-k opcode]

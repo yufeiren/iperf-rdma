@@ -422,7 +422,7 @@ void Listener::RunRDMA( void ) {
         Iperf_pushback( listtemp, &clients ); 
         Mutex_Unlock( &clients_mutex ); 
 		
-	server->mSock = ++ PseudoSock;
+	server->mSock = PseudoSock ++;
         thread_start( server );
     
         // Prep for next connection
