@@ -209,10 +209,12 @@ void Settings_Initialize( thread_Settings *main ) {
     //main->mBufLenSet  = false;         // -l,	
     main->mBufLen       = 128 * 1024;      // -l,  8 Kbyte
     //main->mInterval     = 0;           // -i,  ie. no periodic bw reports
+    main->rdma_opcode   = kRDMAOpc_RDMA_Write; // -k,  rdma opcode
     //main->mPrintMSS   = false;         // -m,  don't print MSS
     // mAmount is time also              // -n,  N/A
     //main->mOutputFileName = NULL;      // -o,  filename
     main->mPort         = 5001;          // -p,  ttcp port
+    main->rdma_iodepth  = 1;             // -q,  rdma iodepth
     // mMode    = kTest_Normal;          // -r,  mMode == kTest_TradeOff
     main->mThreadMode   = kMode_Unknown; // -s,  or -c, none
     main->mAmount       = 1000;          // -t,  10 seconds
