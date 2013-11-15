@@ -188,6 +188,12 @@ void reporter_reportsettings( ReporterData *data ) {
         }
     }
 
+    if ( ( data->mThreadMode == kMode_RDMA_Listener )
+	   || ( data->mThreadMode == kMode_RDMA_Client ) ) {
+        printf( separator_line );
+        return;
+    }
+
     if ( isUDP( data ) ) {
         printf( (data->mThreadMode == kMode_Listener ? 
                                    server_datagram_size : client_datagram_size),
@@ -199,7 +205,7 @@ void reporter_reportsettings( ReporterData *data ) {
     byte_snprintf( buffer, sizeof(buffer), win,
                    toupper( data->info.mFormat));
     printf( "%s: %s", (isUDP( data ) ? 
-                                udp_buffer_size : tcp_window_size), buffer );
+                            udp_buffer_size : tcp_window_size), buffer );
 
     if ( win_requested == 0 ) {
         printf( " %s", window_default );
