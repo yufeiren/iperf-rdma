@@ -212,8 +212,8 @@ void iperf_setup_local_buf(rdma_Ctrl_Blk *cb)
  * of events
  */
 int iperf_rdma_poll_wait_control_msg(rdma_Ctrl_Blk *cb, \
-					    enum ibv_wc_opcode opcode, \
-					    struct ibv_wc *wc)
+				     enum ibv_wc_opcode opcode,	\
+				     struct ibv_wc *wc)
 {
     struct ibv_cq *ev_cq;
     void *ev_ctx;

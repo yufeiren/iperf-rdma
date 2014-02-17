@@ -1,5 +1,5 @@
 /*
- * This file is extended from original iperf for RDMA integration.
+ * This file is extended from iperf for RDMA integration.
  * by Yufei Ren <yufei.ren@stonybrook.edu>
  */
 
@@ -303,6 +303,7 @@ again:
         currLen = 0;
 	for ( i = 0; i < nr; i++ ) {
             // find each one in inflight list
+	    // comments: may be improved with binary search
             io_u = NULL;
             for (list<struct iperf_rdma_io_u *>::iterator it = io_flight_list.begin(); it != io_flight_list.end(); ++it) {
                 if (wc[i].wr_id == ((struct iperf_rdma_io_u *)(*it))->wr_id) {
