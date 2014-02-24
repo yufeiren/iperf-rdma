@@ -1,5 +1,5 @@
-iperf-rdma: Benchmark RDMA interconnects
-========================================
+iperf-rdma: Benchmarking RDMA interconnects
+-------------------------------------------
 
 This is iperf-rdma TCP/UDP and RDMA network benchmark.  It derived
 from iperf with RDMA extentions.
@@ -14,7 +14,16 @@ start client
 
 
 using private_data to exchange test mode
-Original README:
+
+
+Source
+------
+
+iperf-rdma source code resides on a git repo on github.com:
+	git://github.com/yufeiren/iperf-rdma.git
+
+Original README
+---------------
 
 This is Iperf v2.0.0, a tool for measuring Internet bandwidth performance.
 See the doc directory for more documentation.

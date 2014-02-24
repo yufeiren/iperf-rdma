@@ -242,8 +242,8 @@ void Client::RunRDMA( void ) {
 
     wc = (struct ibv_wc *) malloc ( cb->rdma_iodepth * \
 				    sizeof (struct ibv_wc) );
+    FAIL_errno( wc == NULL, "malloc", mSettings );
     memset(wc, '\0', cb->rdma_iodepth * sizeof (struct ibv_wc));
-    FAIL( wc == NULL, "malloc", mSettings );
 
     // InitReport handles Barrier for multiple Streams
     mSettings->reporthdr = InitReport( mSettings );
@@ -640,15 +640,15 @@ void Client::ConnectRDMA( ) {
         ((struct sockaddr_in6 *) &cb->sin)->sin6_port = htons(cb->port);
 
     cb->cm_channel = rdma_create_event_channel();
-    WARN( cb->cm_channel == NULL, "rdma_create_event_channel" );
+    FAIL_errno( cb->cm_channel == NULL, "rdma_create_event_channel", mSettings );
 
     rc = rdma_create_id(cb->cm_channel, &cb->cm_id, cb, RDMA_PS_TCP);
-    WARN( rc == RDMACM_ERROR, "rdma_create_event_channel" );
+    FAIL_errno( rc == RDMACM_ERROR, "rdma_create_id", mSettings );
 
     // resolve address
     rc = rdma_resolve_addr(cb->cm_id, NULL, \
 			   (struct sockaddr *) &mSettings->peer, 2000);
-    WARN( rc == RDMACM_ERROR, "rdma_create_event_channel" );
+    FAIL_errno( rc == RDMACM_ERROR, "rdma_resolve_addr", mSettings );
 
     rc = get_next_channel_event(cb->cm_channel, RDMA_CM_EVENT_ADDR_RESOLVED);
     WARN( rc == RDMACM_ERROR, "get next event failed" );
@@ -658,7 +658,7 @@ void Client::ConnectRDMA( ) {
     WARN( rc == RDMACM_ERROR, "rdma_resolve_route" );
 
     rc = get_next_channel_event(cb->cm_channel, RDMA_CM_EVENT_ROUTE_RESOLVED);
-    WARN( rc == RDMACM_ERROR, "get next event failed" );
+    WARN( rc == RDMACM_ERROR, "get next event" );
 
     rc = iperf_setup_qp(cb);
     FAIL( rc == RDMAIBV_ERROR, "iperf_setup_qp", mSettings );
@@ -695,7 +695,7 @@ void Client::ConnectRDMA( ) {
  * Client: mode(4 bytes) + I/O size(4 bytes) + iodepth(4 bytes)
  * if mode is RDMA_WRITE or RDMA_READ
  *     Server: # of credits(4 bytes) + credits
- *         A credit = buffer addr(8 bits) + rkey(4 bytes) + size(4 bytes)
+ *         A credit = buffer addr(8 bytes) + rkey(4 bytes) + size(4 bytes)
  * else if mode is Send and Recv
  *     Server: iodepth in server side(4 bytes)
  * ------------------------------------------------------------------- */ 
@@ -731,12 +731,9 @@ void Client::InitiateServerRDMA( ) {
     switch (cb->rdma_opcode) {
     case kRDMAOpc_RDMA_Write:
     case kRDMAOpc_RDMA_Read:
+    case kRDMAOpc_Send_Recv:
         // update request information
         iperf_rdma_setup_credit(cb);
-        break;
-    case kRDMAOpc_Send_Recv:
-        // show remote iodepth
-        iperf_rdma_setup_sendbuf(cb);
         break;
     default:
         break;

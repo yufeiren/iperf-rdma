@@ -182,6 +182,9 @@ void Server::RunRDMA( void ) {
     struct iperf_rdma_control_msg *cm;
     struct iperf_rdma_io_u *io_u;
     struct ibv_wc wc;
+    struct ibv_wc *wcp; // completion work request list
+    int nr;
+    struct ibv_recv_wr *bad_recv_wr;
 	
     long currLen; 
     max_size_t totLen = 0;
@@ -190,6 +193,11 @@ void Server::RunRDMA( void ) {
     ReportStruct *reportstruct = NULL;
 
     reportstruct = new ReportStruct;
+
+    wcp = (struct ibv_wc *) malloc ( cb->rdma_iodepth * \
+				     sizeof (struct ibv_wc) );
+    FAIL_errno( wcp == NULL, "malloc", mSettings );
+    memset(wcp, '\0', cb->rdma_iodepth * sizeof (struct ibv_wc));
 
     iperf_rdma_poll_wait_control_msg(cb, IBV_WC_RECV, &wc);
 
@@ -216,6 +224,8 @@ void Server::RunRDMA( void ) {
 	else
             cb->rdma_iodepth *= 2;
     }
+
+    cb->rdma_iodepth = IPERF_RDMA_MAX_IO_DEPTH;
 
     iperf_setup_local_buf( cb );
 
@@ -244,9 +254,17 @@ void Server::RunRDMA( void ) {
         break;
     }
 
+    if (cb->rdma_opcode == kRDMAOpc_Send_Recv) {
+        // setup and post all the receive buffers into receive queue
+        iperf_rdma_setup_recvbuf(cb);
+	rc = iperf_rdma_post_all_recvbuf(cb);
+        FAIL( rc != 0, "post recv tasks", mSettings );
+	printf("post recv buffers success\n");
+    }
+
     // send back credit
     rc = ibv_post_send(cb->qp, &cb->sq_wr, &bad_wr);
-    WARN_errno( rc != 0, "ibv_post_send" );
+    FAIL_errno( rc != 0, "ibv_post_send", mSettings );
 
     // get send completion event
     iperf_rdma_poll_wait_control_msg(cb, IBV_WC_SEND, &wc);
@@ -256,9 +274,33 @@ void Server::RunRDMA( void ) {
         mSettings->reporthdr = InitReport( mSettings );
         
         do {
+            switch (cb->rdma_opcode) {
+            case kRDMAOpc_RDMA_Write:
+            case kRDMAOpc_RDMA_Read:
+                // wait for completion event - graceful teardown
                 // deal with send/recv
-		WARN( 1, "Nice, START testing~~~" );
+		WARN( 1, "Nice, START one-sided testing~~~" );
 		sleep(100);
+                break;
+            case kRDMAOpc_Send_Recv:
+                do {
+			nr = iperf_rdma_poll_comp(cb, cb->rdma_iodepth, wcp);
+		} while (nr == 0);
+                break;
+            default:
+                break;
+            }
+
+	    currLen = 0;
+	    if (cb->rdma_opcode == kRDMAOpc_Send_Recv) {
+                // repost completed receive buffer
+                for (i = 0; i < nr; i++) {
+                    io_u = &cb->io_us[wcp[i].wr_id];
+		    rc = ibv_post_recv(cb->qp, &io_u->rq_wr, &bad_recv_wr);
+		    WARN_errno( rc != 0, "ibv_post_recv" );
+		    currLen += io_u->size;
+		}
+	    }
 
             if ( isUDP( mSettings ) ) {
                 // read the datagram ID and sentTime out of the buffer 

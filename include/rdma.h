@@ -174,6 +174,10 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb);
 
 void iperf_rdma_setup_sendbuf(rdma_Ctrl_Blk *cb);
 
+void iperf_rdma_setup_recvbuf(rdma_Ctrl_Blk *cb);
+
+int iperf_rdma_post_all_recvbuf(rdma_Ctrl_Blk *cb);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

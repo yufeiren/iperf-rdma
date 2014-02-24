@@ -193,8 +193,9 @@ void iperf_setup_local_buf(rdma_Ctrl_Blk *cb)
                                 | IBV_ACCESS_REMOTE_WRITE);
 	    break;
 	case kRDMAOpc_Send_Recv:
+            // should be local write
             io_u->mr = ibv_reg_mr(cb->pd, io_u->addr, io_u->size,
-				  0);
+				  IBV_ACCESS_LOCAL_WRITE);
 	    break;
 	default:
             WARN( 1, "Unknown rdma opcode" );
@@ -259,8 +260,9 @@ again:
         goto again;
 
     for (i = 0; i < nr; i ++) {
-        WARN( (wc[i].status != 0) && (wc[i].status != IBV_WC_WR_FLUSH_ERR), \
-             "cq completion failed status" );
+        if( (wc[i].status != 0) && (wc[i].status != IBV_WC_WR_FLUSH_ERR) )
+            fprintf(stderr, "cq completion failed: %s\n", \
+		    ibv_wc_status_str(wc[i].status));
     }
 
     ibv_ack_cq_events(cb->cq, nr);
@@ -278,7 +280,7 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb)
     cm = &cb->recv_buf;
 
     nr = ntohl(cm->iodepth);
-    WARN( nr != cb->rdma_iodepth, "returned credit is not sufficient" );
+    WARN( nr < cb->rdma_iodepth, "returned credit is not sufficient" );
 
     for (i = 0; i < nr; i++) {
         rmt_u = &cm->rmt_us[i];
@@ -310,7 +312,7 @@ void iperf_rdma_setup_credit(rdma_Ctrl_Blk *cb)
             io_u->sq_wr.send_flags = IBV_SEND_SIGNALED;
             io_u->sq_wr.sg_list = &io_u->rdma_sgl;
             io_u->sq_wr.num_sge = 1;
-            io_u->sq_wr.sg_list->length = ntohl(rmt_u->size);
+            io_u->sq_wr.sg_list->length = cb->buflen;
 	    break;
         default:
             break;
@@ -331,4 +333,38 @@ void iperf_rdma_setup_sendbuf(rdma_Ctrl_Blk *cb)
     }
 }
 
+void iperf_rdma_setup_recvbuf(rdma_Ctrl_Blk *cb)
+{
+    int i;
+    struct iperf_rdma_io_u *io_u;
+
+    for (i = 0; i < cb->rdma_iodepth; i++) {
+        io_u = &cb->io_us[i];
+	io_u->wr_id = i;
+
+	io_u->rq_wr.wr_id = io_u->wr_id;
+	io_u->rq_wr.next = NULL;
+	io_u->rq_wr.sg_list = &io_u->rdma_sgl;
+	io_u->rq_wr.num_sge = 1;
+	// io_u->rq_wr.sg_list->length = cb->buflen;
+    }
+}
+
+int iperf_rdma_post_all_recvbuf(rdma_Ctrl_Blk *cb)
+{
+    int rc, i;
+    struct ibv_recv_wr *bad_recv_wr;
+    struct iperf_rdma_io_u *io_u;
+
+    for (i = 0; i < cb->rdma_iodepth; i++) {
+        io_u = &cb->io_us[i];
+
+        rc = ibv_post_recv(cb->qp, &io_u->rq_wr, &bad_recv_wr);
+        WARN_errno( rc != 0, "ibv_post_recv" );
+	if (rc != 0)
+		return -1;
+    }
+
+    return 0;
+}
 
