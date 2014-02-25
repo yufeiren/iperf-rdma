@@ -223,9 +223,9 @@ void Server::RunRDMA( void ) {
 	    cb->rdma_iodepth = IPERF_RDMA_MAX_IO_DEPTH;
 	else
             cb->rdma_iodepth *= 2;
-    }
 
-    cb->rdma_iodepth = IPERF_RDMA_MAX_IO_DEPTH;
+        cb->rdma_iodepth = IPERF_RDMA_MAX_IO_DEPTH;
+    }
 
     iperf_setup_local_buf( cb );
 
